@@ -1,0 +1,26 @@
+idea:
+  title: Mapping an MLP in Terms of Tokens
+  domain: machine_learning
+  hypothesis: 'The mapping from MLP inputs to outputs for elements of the residual
+    stream corresponding to specific tokens can be described as a simple program that
+    compares which token directions are present and then performs a shallow program
+    to produce the output token directions.
+
+    '
+  background:
+    description: 'If you look at elements of the residual stream that correspond to
+      a specific token, and then see what MLP inputs map to what MLP outputs, how
+      much of that can be described as a simple program that compares with token directions
+      are present and then performs a shallow program to produce the output token
+      directions?
+
+      '
+  metadata:
+    author: Ari Holtzman
+    source: IdeaHub
+    source_url: https://hypogenic.ai/ideahub/idea/jEMWwJOLbyG4DsqfcPns
+    idea_id: mapping_an_mlp_in_terms_of_tok_20260323_010259_40aaec6f
+    created_at: '2026-03-23T01:02:59.567899'
+    status: submitted
+    github_repo_name: mlp-token-mapping-claude
+    github_repo_url: https://github.com/Hypogenic-AI/mlp-token-mapping-claude
