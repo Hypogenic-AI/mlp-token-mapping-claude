@@ -1,0 +1,188 @@
+\section{Results}
+\label{sec:results}
+
+We present results across six experiments that progressively characterize how well MLP computation can be described as a shallow program over token directions.
+
+\subsection{Token Directions Capture a Minority of MLP Information}
+\label{sec:res_decomp}
+
+\Tabref{tab:decomposition} shows the cosine similarity and $\Rsq$ between original MLP activations and their reconstruction from the top-50 token directions.
+MLP outputs are better captured than inputs in early and middle layers (output $\Rsq$ peaks at 0.24 for layers 1--5), but the overall fraction of variance explained is modest: top-50 token directions capture only 5--24\% of MLP input/output variance across all layers.
+This means MLP vectors have substantial components orthogonal to the dominant token directions.
+
+\begin{table}[t]
+    \centering
+    \caption{Token direction decomposition. Cosine similarity and $\Rsq$ between MLP activations and their reconstruction from the top-50 token directions (via $\Wu$), averaged over 1,000 sampled positions per layer. Token directions capture only a minority of MLP variance.}
+    \label{tab:decomposition}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{@{}lcccccccccccc@{}}
+        \toprule
+        & \multicolumn{12}{c}{Layer} \\
+        \cmidrule(lr){2-13}
+        Metric & 0 & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 \\
+        \midrule
+        Input cos.\,sim. & .325 & .316 & .328 & .339 & .350 & .363 & .375 & .386 & .393 & .405 & .394 & .227 \\
+        Output cos.\,sim. & .392 & .479 & .484 & .482 & .485 & .485 & .470 & .456 & .460 & .437 & .291 & .342 \\
+        Input $\Rsq$ & .107 & .102 & .110 & .117 & .126 & .135 & .143 & .151 & .158 & .167 & .159 & .053 \\
+        Output $\Rsq$ & .158 & .235 & .239 & .239 & .241 & .240 & .225 & .214 & .217 & .196 & .090 & .124 \\
+        \bottomrule
+    \end{tabular}
+    }
+\end{table}
+
+\subsection{Shallow Token-Direction Programs Partially Approximate MLPs}
+\label{sec:res_shallow}
+
+\Tabref{tab:shallow} presents the main results: a Ridge regression mapping the top-100 input token logits to the top-100 output token logits.
+The approximation quality varies dramatically across layers, exhibiting a U-shaped pattern.
+Layer~11 achieves the best fit ($\Rsq = 0.54$, top-5 agreement $= 37.2\%$), while middle layers 5--6 achieve only $\Rsq \approx 0.10$.
+Early layers (0, 2) show moderate fit ($\Rsq \approx 0.40$).
+
+\begin{table}[t]
+    \centering
+    \caption{Shallow program results ($k=100$). A Ridge regression maps top-100 input token logits to top-100 output token logits. The approximation shows a U-shaped pattern: best at early and late layers, worst at middle layers. Best $\Rsq$ in \textbf{bold}.}
+    \label{tab:shallow}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{@{}lcccccccccccc@{}}
+        \toprule
+        & \multicolumn{12}{c}{Layer} \\
+        \cmidrule(lr){2-13}
+        Metric & 0 & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 \\
+        \midrule
+        $\Rsq$ & .404 & .270 & .406 & .129 & .124 & .106 & .091 & .114 & .171 & .237 & .354 & \textbf{.542} \\
+        Cosine sim. & .616 & .555 & .344 & .404 & .435 & .402 & .421 & .595 & .635 & .718 & .833 & .618 \\
+        Top-5 agr. & .320 & .285 & .203 & .184 & .176 & .173 & .156 & .217 & .297 & .313 & .306 & \textbf{.372} \\
+        \bottomrule
+    \end{tabular}
+    }
+\end{table}
+
+\subsection{Token Directions Are Not a Privileged Basis}
+\label{sec:res_baseline}
+
+\Tabref{tab:baseline} presents the critical control experiment.
+Random orthogonal directions perform comparably to---or better than---token directions in most layers.
+At layer~2, random directions achieve $\Rsq = 0.82$ versus $0.41$ for token directions.
+At layer~11, the two are nearly identical ($\Rsq = 0.56$ vs.\ $0.54$).
+The full linear map (operating in the original $\dmodel$-dimensional space without projecting through token space) provides an upper bound, reaching $\Rsq = 0.77$ at layer~11.
+
+This result fundamentally reframes the token-direction program: its success comes from the MLP being approximately linear in any basis, not from token directions capturing a privileged decomposition of MLP computation.
+
+\begin{table}[t]
+    \centering
+    \caption{Baseline comparison ($\Rsq$ values). Random orthogonal directions match or exceed token directions across most layers, demonstrating that the vocabulary basis is not privileged. The full linear map provides an upper bound on linear approximability. Best non-oracle result per layer in \textbf{bold}.}
+    \label{tab:baseline}
+    \begin{tabular}{@{}lccccccc@{}}
+        \toprule
+        & \multicolumn{7}{c}{Layer} \\
+        \cmidrule(lr){2-8}
+        Method & 0 & 1 & 2 & 3 & 6 & 9 & 11 \\
+        \midrule
+        Token dirs ($k{=}100$) & .404 & .270 & .406 & .129 & .091 & .237 & .542 \\
+        Random dirs ($k{=}100$) & \textbf{.574} & \textbf{.766} & \textbf{.818} & \textbf{.414} & \textbf{.163} & .235 & \textbf{.558} \\
+        Full linear & .661 & .292 & .667 & .006 & $-.031$ & \textbf{.244} & .769 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{U-Shaped Linearity Profile}
+\label{sec:res_linearity}
+
+\Tabref{tab:linearity} shows how well a full-rank linear map in $\sR^{\dmodel}$ approximates each MLP layer.
+A clear U-shaped profile emerges.
+Early layers (0--2) are highly linear ($\Rsq = 0.81$--$0.99$), performing nearly linear transformations that any basis can capture.
+Middle layers (5--7) are strongly nonlinear ($\Rsq = 0.10$--$0.23$), where GELU activations and complex feature interactions create behavior that no linear model can describe.
+Late layers (10--11) recover moderate linearity ($\Rsq = 0.67$--$0.71$) as the network prepares the final token prediction.
+
+\begin{table}[t]
+    \centering
+    \caption{MLP linearity by layer. $\Rsq$ and cosine similarity of a full-rank $\dmodel \to \dmodel$ linear approximation. MLPs exhibit a U-shaped linearity profile: early and late layers are approximately linear, while middle layers are highly nonlinear.}
+    \label{tab:linearity}
+    \begin{tabular}{@{}lcccccccccc@{}}
+        \toprule
+        & \multicolumn{9}{c}{Layer} \\
+        \cmidrule(lr){2-10}
+        Metric & 0 & 1 & 2 & 3 & 5 & 7 & 9 & 10 & 11 \\
+        \midrule
+        $\Rsq$ & .810 & .932 & \textbf{.992} & .652 & .233 & .095 & .226 & .710 & .671 \\
+        Cosine sim. & .890 & .645 & .499 & .493 & .480 & .501 & .581 & .836 & .775 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Effect of Number of Token Directions}
+\label{sec:res_topk}
+
+\Tabref{tab:topk} shows how the approximation quality varies with $k$, the number of token directions used.
+Layer~11 benefits strongly from more directions: $\Rsq$ increases from $0.27$ at $k=10$ to $\textbf{0.70}$ at $k=500$.
+In contrast, middle layers show no improvement or even degradation with more directions---layer~3 drops from $\Rsq = 0.09$ at $k=10$ to $-0.12$ at $k=500$, indicating overfitting when additional directions add noise without capturing the nonlinear computation.
+
+\begin{table}[t]
+    \centering
+    \caption{Effect of the number of token directions $k$ on $\Rsq$ for selected layers. Layer~11 improves strongly with more directions, while middle layers show no benefit or degrade due to overfitting. Best result per layer in \textbf{bold}.}
+    \label{tab:topk}
+    \begin{tabular}{@{}lcccccc@{}}
+        \toprule
+        & \multicolumn{6}{c}{Number of token directions ($k$)} \\
+        \cmidrule(lr){2-7}
+        Layer & 10 & 25 & 50 & 100 & 200 & 500 \\
+        \midrule
+        0 & .111 & .234 & .316 & .334 & \textbf{.438} & .436 \\
+        3 & \textbf{.085} & .080 & .085 & .115 & .085 & $-.120$ \\
+        6 & .035 & .032 & .049 & .050 & \textbf{.059} & $-.093$ \\
+        9 & .064 & .147 & \textbf{.241} & .135 & .217 & .120 \\
+        11 & .273 & .361 & .420 & .502 & .477 & \textbf{.695} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{MLP Activation Sparsity}
+\label{sec:res_sparsity}
+
+\Tabref{tab:sparsity} reports the sparsity of MLP hidden-layer activations (post-GELU).
+Across all layers, 50--66\% of neurons have activation magnitude exceeding 0.1.
+The top-100 neurons (out of 3,072) account for only 18--23\% of the total activation magnitude.
+MLP computation is therefore highly distributed---not concentrated in a small number of interpretable ``key-value lookups.''
+
+\begin{table}[t]
+    \centering
+    \caption{MLP activation sparsity. The fraction of active neurons ($|\text{activation}| > 0.1$) and the concentration of total activation magnitude in the top-$n$ neurons. MLP computation is distributed across many neurons.}
+    \label{tab:sparsity}
+    \begin{tabular}{@{}lcccc@{}}
+        \toprule
+        Layer & Active frac. & Top-10 conc. & Top-50 conc. & Top-100 conc. \\
+        \midrule
+        0 & .567 & .055 & .127 & .177 \\
+        3 & .504 & .041 & .111 & .163 \\
+        6 & .582 & .037 & .113 & .172 \\
+        9 & .618 & .044 & .128 & .191 \\
+        11 & .655 & .049 & .150 & .231 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Next-Token Prediction from MLP Outputs}
+\label{sec:res_nexttok}
+
+\Tabref{tab:nexttok} shows how well individual MLP layer outputs predict the next token.
+Individual MLP outputs are poor next-token predictors: the best single-layer accuracy is 8.2\% top-1 at layer~10.
+The next-token signal builds compositionally across the residual stream, reaching 23.7\% top-1 accuracy by the final layer.
+Notably, layer~11's MLP output actually \emph{decreases} next-token accuracy from the previous layer (2.6\% vs.\ 8.2\%), suggesting it contributes a diffuse, non-token-specific update rather than directly promoting the answer token.
+
+\begin{table}[t]
+    \centering
+    \caption{Next-token prediction accuracy from MLP outputs (projected to vocabulary space) and the full residual stream at selected layers. The next-token signal builds compositionally; no single MLP layer is a strong predictor.}
+    \label{tab:nexttok}
+    \begin{tabular}{@{}lcccc@{}}
+        \toprule
+        Layer & MLP top-1 & MLP top-10 & Residual top-1 & Residual top-10 \\
+        \midrule
+        0 & 0.9\% & 4.3\% & 0.7\% & 4.6\% \\
+        5 & 0.2\% & 0.9\% & 3.2\% & 12.4\% \\
+        8 & 5.5\% & 13.8\% & 13.1\% & 32.3\% \\
+        9 & 6.4\% & 17.3\% & 18.8\% & 39.4\% \\
+        10 & \textbf{8.2\%} & \textbf{19.7\%} & 23.5\% & 45.3\% \\
+        11 & 2.6\% & 6.6\% & \textbf{23.7\%} & \textbf{47.3\%} \\
+        \bottomrule
+    \end{tabular}
+\end{table}

@@ -1,0 +1,69 @@
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{The Token-Direction Program: Partial Success, Fundamental Limitation}
+
+Our results show that a shallow linear program over token directions can explain a meaningful fraction of MLP output variance---up to 54\% at layer~11 with $k=100$ directions, and 70\% with $k=500$.
+At first glance, this seems to support the hypothesis that MLPs operate as simple programs in token space.
+
+However, the random-direction control experiment (\tabref{tab:baseline}) reveals that this success is not specific to token directions.
+Random orthogonal directions achieve comparable or superior $\Rsq$ values across most layers.
+The implication is clear: the token-direction program works because the MLP is partially linear, not because the vocabulary provides a natural basis for describing MLP computation.
+This distinction matters for interpretability: one cannot claim that the MLP ``thinks in tokens'' any more than it ``thinks in random directions.''
+
+\subsection{The U-Shaped Linearity Profile}
+
+The most striking structural finding is the U-shaped linearity profile across layers (\tabref{tab:linearity}).
+Early layers (0--2) perform nearly linear transformations ($\Rsq > 0.81$).
+Middle layers (3--8) are strongly nonlinear ($\Rsq$ drops to 0.10).
+Late layers (10--11) partially linearize again ($\Rsq \approx 0.67$--$0.71$).
+
+This pattern aligns with prior observations that early layers handle syntactic processing and late layers prepare final predictions~\citep{geva2021transformer,meng2022locating}, but adds a quantitative characterization.
+The high nonlinearity of middle layers is consistent with these layers performing the most complex computation---disentangling superposed features~\citep{elhage2022toy}, composing multi-hop reasoning, and transforming representations in ways that require the full expressivity of the GELU nonlinearity.
+
+\subsection{Distributed Computation}
+
+The sparsity analysis (\tabref{tab:sparsity}) reveals that 50--66\% of MLP neurons are active at any given position, and the top-100 neurons explain only 18--23\% of the total activation.
+This contradicts a simple ``key-value lookup'' interpretation where a handful of neurons fire for each input.
+Instead, MLP computation is highly distributed, with thousands of neurons contributing small updates that collectively determine the output.
+This distributed nature helps explain why simple programs fail in middle layers: the computation cannot be reduced to a few dominant directions.
+
+\subsection{Implications for Mechanistic Interpretability}
+
+Our findings have several implications for the field.
+
+{\bf The ``MLP as token program'' metaphor has limited scope.}
+It works reasonably for late layers preparing final predictions but breaks down for middle layers where the most interesting computation occurs.
+Researchers using token-space projections to interpret MLP behavior should be aware that this lens captures at most half the picture, and that the captured portion reflects linearity rather than token-specific organization.
+
+{\bf Random baselines are essential.}
+Without the random-direction control, one might conclude that token directions are a meaningful basis for MLP computation.
+We recommend that future interpretability studies include random-direction baselines when claiming that a particular basis (token directions, SAE features, or otherwise) is privileged.
+
+{\bf Middle layers need nonlinear descriptions.}
+The field should look beyond linear analyses---toward sparse autoencoders~\citep{cunningham2023sparse}, nonlinear probes, or other methods---to describe middle-layer MLP computation.
+Linear methods, regardless of basis, capture less than 25\% of the variance in these layers.
+
+\subsection{Limitations}
+\label{sec:limitations}
+
+\para{Model scope.}
+We analyze only \gpttwo (12 layers, 85M parameters).
+Larger models may exhibit different linearity profiles, and the relative importance of token directions may change with scale.
+
+\para{Token direction definition.}
+We define token directions via the unembedding matrix $\Wu$.
+Alternative definitions---the embedding matrix $\mW_E$, SAE-derived features, or directions found by probing---might yield different results.
+
+\para{Linear programs only.}
+We test only linear (Ridge regression) programs.
+Decision trees, polynomial features, or small neural networks might capture substantially more of the MLP behavior, especially in middle layers.
+
+\para{Aggregate analysis.}
+We analyze MLP behavior aggregated across diverse inputs.
+The MLP might implement a simple program \emph{per input type} (e.g., factual recall prompts) while appearing complex in aggregate.
+Input-conditional analysis is a promising direction.
+
+\para{Top-$k$ selection.}
+Using globally top-$k$ most variable token dimensions may miss input-specific relevant directions.
+Per-input direction selection could improve results.

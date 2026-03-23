@@ -1,0 +1,72 @@
+\section{Methodology}
+\label{sec:method}
+
+We describe our approach for testing whether MLP layers can be approximated by shallow programs over token directions.
+The core idea is to project MLP inputs and outputs into vocabulary space via the unembedding matrix and measure how well a linear model in this space approximates the MLP's behavior.
+
+\subsection{Setup}
+\label{sec:setup}
+
+\para{Model.}
+We use \gpttwo (12 layers, $\dmodel = 768$, $\dmlp = 3072$, vocabulary size $|\gV| = 50{,}257$), loaded via TransformerLens~\citep{nanda2022transformerlens}.
+GPT-2 Small is the most widely studied model in the mechanistic interpretability literature, enabling direct comparison with prior work.
+
+\para{Data.}
+We use the \wikitext validation split~\citep{merity2017pointer}, consistent with the datasets used by \citet{geva2021transformer,geva2022transformer}.
+We sample 200 text sequences, each truncated to 128 tokens (with BOS token prepended), filtering sequences shorter than 10 tokens.
+This yields 19,281 token positions across all sequences.
+At each layer $\ell$ and token position $t$, we collect the MLP input $\vx_{\ell,t} \in \sR^{\dmodel}$ (post-LayerNorm) and MLP output $\vy_{\ell,t} \in \sR^{\dmodel}$.
+
+\subsection{Token Direction Decomposition}
+\label{sec:decomposition}
+
+We project MLP activations into vocabulary space using the unembedding matrix $\Wu \in \sR^{|\gV| \times \dmodel}$.
+For an activation vector $\vx \in \sR^{\dmodel}$, the token logits are:
+\begin{equation}
+    \vz = \Wu \vx \in \sR^{|\gV|}
+    \label{eq:projection}
+\end{equation}
+where the $i$-th component $z_i$ measures how strongly $\vx$ aligns with the direction of token $i$ in the unembedding space.
+
+To measure how well token directions capture MLP activations, we select the top-$k$ tokens (by logit magnitude) for each vector, extract the corresponding rows of $\Wu$ as a basis $\mB_k \in \sR^{k \times \dmodel}$, reconstruct via least-squares projection $\hat{\vx} = \mB_k^{\dagger} \mB_k \vx$, and measure cosine similarity and $\Rsq$ between $\vx$ and $\hat{\vx}$.
+
+\subsection{Shallow Program Approximation}
+\label{sec:shallow}
+
+The central experiment fits a linear model mapping input token logits to output token logits:
+\begin{equation}
+    \hat{\vz}^{\text{out}} = \mA \, \vz^{\text{in}} + \vb
+    \label{eq:shallow}
+\end{equation}
+where $\vz^{\text{in}} = \Wu \vx \in \sR^{|\gV|}$ and $\vz^{\text{out}} = \Wu \vy \in \sR^{|\gV|}$ are the input and output token logits, $\mA \in \sR^{k \times k}$ is a learned weight matrix, and $\vb$ is a bias term.
+
+To keep the model tractable, we select the top-$k$ most variable token dimensions (across all positions) for both inputs and outputs.
+We vary $k \in \{10, 25, 50, 100, 200, 500\}$ to study the effect of the number of token directions.
+We fit Ridge regression ($\alpha = 1.0$) on a 70/30 train/test split and report $\Rsq$, cosine similarity, and top-5 agreement on the held-out test set.
+
+\subsection{Baselines}
+\label{sec:baselines}
+
+We compare the token-direction program against two baselines:
+
+\para{Random directions.}
+We replace $\Wu$ with a random orthogonal matrix $\mR \in \sR^{k \times \dmodel}$ (rows drawn from a random orthogonal basis) and fit the same linear model.
+If the token-direction program succeeds because the vocabulary is a privileged basis, it should outperform random directions.
+If random directions match or exceed token directions, the success is attributable to the MLP's inherent linearity.
+
+\para{Full linear map.}
+We fit a linear map directly in the residual stream: $\hat{\vy} = \mA' \vx + \vb'$ where $\mA' \in \sR^{\dmodel \times \dmodel}$.
+This provides an upper bound on the variance explainable by any linear model, without the information bottleneck of projecting through token space.
+
+\subsection{Additional Analyses}
+\label{sec:additional}
+
+\para{MLP linearity.}
+We measure how well a full-rank $\dmodel \to \dmodel$ linear map approximates each MLP layer, providing a direct characterization of per-layer nonlinearity.
+
+\para{Activation sparsity.}
+We analyze the sparsity of MLP hidden activations (post-GELU) to test whether computation is concentrated in a few neurons.
+We report the fraction of neurons with $|\text{activation}| > 0.1$ and the cumulative contribution of the top-$n$ neurons.
+
+\para{Next-token prediction.}
+We project MLP outputs to vocabulary space and measure how often the top-ranked token matches the actual next token, assessing whether individual MLP layers directly predict the next token.

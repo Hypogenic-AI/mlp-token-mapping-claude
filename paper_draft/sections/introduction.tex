@@ -1,0 +1,31 @@
+\section{Introduction}
+\label{sec:intro}
+
+Transformer MLP layers are the primary mechanism by which language models store and transform factual knowledge~\citep{geva2021transformer,meng2022locating,dai2022knowledge}.
+A growing body of work shows that individual MLP neurons promote specific tokens in vocabulary space~\citep{geva2022transformer}, that MLP layers implement vector arithmetic for factual recall~\citep{merullo2023language}, and that intermediate representations are organized as linear directions corresponding to concepts~\citep{park2024linear}.
+These findings suggest an appealing hypothesis: perhaps MLP computation can be described as a \emph{simple program} that checks which token directions are present in the input and produces a shallow combination of output token directions.
+
+If true, such a description would make transformer internals far more interpretable.
+Rather than treating each MLP layer as an opaque $\dmodel \to \dmodel$ nonlinear function with $\dmlp$ hidden units, we could describe it as: ``given that the input contains directions for tokens $\{t_1, t_2, \ldots\}$, produce an update that promotes tokens $\{t'_1, t'_2, \ldots\}$.''
+This would enable targeted model editing, debugging, and verification at a level of abstraction that connects directly to the model's vocabulary.
+
+{\bf What is missing?}
+Despite the evidence above, no prior work has systematically quantified how much of the \emph{full} MLP input-to-output mapping can be captured by a shallow program operating over token directions.
+\citet{geva2021transformer} show that MLP keys detect input patterns and \citet{geva2022transformer} show that values promote concepts, but these analyses examine individual neurons in isolation.
+\citet{merullo2023language} demonstrate vector arithmetic for specific relational tasks, but do not measure how much of the aggregate MLP behavior this explains.
+We lack a direct answer to the question: \emph{what fraction of MLP computation is describable as a linear program over token directions?}
+
+We address this gap by projecting MLP inputs and outputs into vocabulary space via the unembedding matrix $\Wu$ and fitting sparse linear models that map input token logits to output token logits.
+We evaluate this ``token-direction program'' across all 12 layers of \gpttwo on 19,281 token positions from \wikitext, comparing against random-direction and full-rank linear baselines.
+
+Our key finding is that the token-direction program hypothesis is \emph{partially supported with significant caveats}.
+At layer~11, the program achieves $\Rsq=0.54$ (or $0.70$ with $k=500$ directions), but middle layers resist any linear description ($\Rsq < 0.15$).
+Critically, random orthogonal directions perform comparably to token directions, revealing that the approximability comes from the MLP's inherent partial linearity---not from token directions being a privileged basis.
+
+Our contributions are as follows:
+\begin{itemize}[leftmargin=*,itemsep=0pt,topsep=0pt]
+    \item We propose a systematic framework for testing whether MLP layers can be described as shallow programs over token directions, decomposing MLP inputs and outputs via the unembedding matrix and fitting sparse linear approximations.
+    \item We discover a U-shaped linearity profile across layers: early and late layers are approximately linear in any basis, while middle layers are highly nonlinear.
+    \item We demonstrate via a random-direction control that token directions are not a privileged basis for describing MLP computation---the partial success of token-direction programs reflects linear structure, not vocabulary-specific organization.
+    \item We provide layer-wise quantitative benchmarks ($\Rsq$, cosine similarity, top-$k$ agreement) that characterize where the ``MLP as token program'' metaphor holds and where it breaks down.
+\end{itemize}

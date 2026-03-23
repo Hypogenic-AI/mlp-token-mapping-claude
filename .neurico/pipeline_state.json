@@ -1,0 +1,34 @@
+{
+  "created_at": "2026-03-23T01:03:04.913048",
+  "stages": {
+    "resource_finder": {
+      "status": "completed",
+      "started_at": "2026-03-23T01:03:04.913358",
+      "completed_at": "2026-03-23T01:20:04.858452",
+      "success": true,
+      "outputs": {
+        "literature_review": "/workspaces/mlp-token-mapping-claude/literature_review.md",
+        "resources_catalog": "/workspaces/mlp-token-mapping-claude/resources.md",
+        "papers_dir": "/workspaces/mlp-token-mapping-claude/papers",
+        "datasets_dir": "/workspaces/mlp-token-mapping-claude/datasets",
+        "code_dir": "/workspaces/mlp-token-mapping-claude/code"
+      }
+    },
+    "experiment_runner": {
+      "status": "completed",
+      "started_at": "2026-03-23T01:20:04.858708",
+      "completed_at": "2026-03-23T01:34:20.797684",
+      "success": true,
+      "outputs": {
+        "success": true,
+        "return_code": 0,
+        "elapsed_time": 855.9277951717377,
+        "log_file": "/workspaces/mlp-token-mapping-claude/logs/execution_claude.log",
+        "transcript_file": "/workspaces/mlp-token-mapping-claude/logs/execution_claude_transcript.jsonl"
+      }
+    }
+  },
+  "current_stage": null,
+  "completed": true,
+  "completed_at": "2026-03-23T01:34:20.798124"
+}

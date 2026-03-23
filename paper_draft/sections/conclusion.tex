@@ -1,0 +1,10 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+We tested whether transformer MLP layers can be described as shallow programs that detect and produce token directions.
+A linear program over the top-$k$ token directions explains 9--54\% of MLP output variance depending on the layer, with the strongest results at layer~11 ($\Rsq = 0.70$ with $k=500$).
+However, random orthogonal directions perform comparably, revealing that this approximability reflects the MLP's inherent partial linearity rather than token directions being a privileged basis.
+MLP layers exhibit a U-shaped linearity profile---early and late layers are approximately linear in any basis, while middle layers resist any linear description.
+
+These findings recalibrate the ``MLP as token program'' metaphor: it provides a partial but not privileged description of MLP computation.
+Future work should investigate per-input-type analysis (where simple programs may succeed more consistently), SAE-derived feature bases as alternatives to token directions, and nonlinear program classes to better capture middle-layer computation.

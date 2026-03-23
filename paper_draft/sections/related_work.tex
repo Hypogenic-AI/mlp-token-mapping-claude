@@ -1,0 +1,27 @@
+\section{Related Work}
+\label{sec:related}
+
+\para{MLPs as key-value memories.}
+\citet{geva2021transformer} establish that transformer feed-forward layers operate as key-value memories, where each neuron's key vector detects a specific input pattern and its value vector stores an associated output distribution.
+\citet{geva2022transformer} extend this view by showing that individual MLP sub-updates (the product of a neuron's activation and its value vector) promote interpretable token concepts when projected to vocabulary space.
+\citet{dai2022knowledge} identify ``knowledge neurons'' whose activation directly correlates with specific factual knowledge.
+Our work builds on this foundation but asks a different question: rather than examining individual neurons in isolation, we test whether the \emph{aggregate} MLP input-to-output mapping can be approximated by a shallow linear program in token space.
+
+\para{Factual recall and model editing.}
+\citet{meng2022locating} use causal tracing to localize factual associations to specific MLP layers and develop rank-one model editing (ROME) by modifying MLP value matrices.
+\citet{merullo2023language} show that MLPs implement simple vector arithmetic for relational tasks---the MLP produces a content-independent update that can be patched across examples.
+These results suggest that at least some MLP computations are simple token-direction programs.
+We go further by measuring how much of the \emph{total} MLP computation (not just factual recall) this description captures, and we find that the picture is more nuanced: the simple program works well in late layers but breaks down in middle layers where the most complex computation occurs.
+
+\para{Linear representations.}
+The linear representation hypothesis~\citep{park2024linear} holds that concepts in language models are encoded as directions in activation space.
+\citet{marks2023geometry} provide evidence that truth values are linearly represented.
+\citet{belrose2023eliciting} improve on the logit lens~\citep{nostalgebraist2020logit} by learning per-layer affine transformations for better intermediate decoding.
+Our use of the unembedding matrix to project MLP activations into vocabulary space follows this line of work.
+Unlike prior studies that focus on whether specific concepts are linearly decodable, we ask whether the MLP's computation itself can be linearly approximated \emph{in token space}.
+
+\para{Superposition and sparse autoencoders.}
+\citet{elhage2022toy} demonstrate that neural networks represent more features than they have dimensions through superposition.
+\citet{cunningham2023sparse} train sparse autoencoders (SAEs) on MLP activations to discover interpretable features that go beyond individual neurons.
+These results suggest that the token-direction basis may be insufficient to describe MLP computation because features are superposed across directions.
+Our random-direction control experiment provides direct evidence for this: the vocabulary basis has no special advantage over random bases, consistent with MLP features being distributed across many directions rather than aligned with token embeddings.

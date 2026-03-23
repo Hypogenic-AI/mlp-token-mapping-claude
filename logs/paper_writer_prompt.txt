@@ -1,0 +1,886 @@
+You are an academic paper writer. Generate a complete NEURIPS style paper
+based on the experiment results provided.
+
+════════════════════════════════════════════════════════════════════════════════
+                         IMPORTANT: BEFORE YOU START
+════════════════════════════════════════════════════════════════════════════════
+
+Before writing any content, you MUST complete these steps:
+
+1. READ THE SKILL: Review the paper-writer skill at .claude/skills/paper-writer/SKILL.md
+2. READ THE STYLE GUIDE: Study templates/paper_writing/lab_style_guide.md carefully
+3. REVIEW EXAMPLES: Browse paper_examples/ for formatting and language patterns:
+   - Look at sections/1.introduction.tex for language style
+   - Look at tables/*.tex for table formatting
+   - Look at commands/*.tex for macro usage
+4. VERIFY COMMAND TEMPLATES: Command templates (math.tex, general.tex, macros.tex) are pre-copied to paper_draft/commands/
+
+CRITICAL: Reference example papers for FORMATTING and LANGUAGE STYLE only.
+Do NOT copy content, phrasing, or narrative structure from the example papers.
+The examples are in a different research domain - focus only on presentation style.
+
+════════════════════════════════════════════════════════════════════════════════
+                            EXPERIMENT REPORT
+════════════════════════════════════════════════════════════════════════════════
+
+# REPORT: Mapping an MLP in Terms of Tokens
+
+## 1. Executive Summary
+
+We investigated whether transformer MLP layers can be described as &#34;simple programs&#34; that detect which token directions are present in the residual stream input and produce output token directions. Using GPT-2 Small (12 layers, d=768), we decomposed MLP inputs and outputs into token-direction components via the unembedding matrix and measured how well a shallow linear model (the &#34;simple program&#34;) can approximate the MLP&#39;s input→output mapping in token space.
+
+**Key finding**: The hypothesis is **partially supported with significant caveats**. A sparse linear program mapping input token logits to output token logits explains 9–54% of MLP output variance depending on the layer, with the best results at layer 11 (R²=0.54 with k=100 token directions, R²=0.70 with k=500). However, a critical control reveals that **random directions perform comparably** to token directions in many layers, indicating that the approximability stems from the MLP&#39;s inherent linearity rather than token directions being a privileged basis. Middle layers (3–7) are highly nonlinear and resist any simple program description.
+
+**Practical implication**: MLP layers in early and late positions can be partially understood as linear transformations in any basis (including token space), but middle layers—where the most complex computation occurs—require nonlinear descriptions that go beyond simple token-direction programs.
+
+## 2. Goal
+
+**Hypothesis**: The mapping from MLP inputs to outputs for elements of the residual stream corresponding to specific tokens can be described as a simple program that compares which token directions are present and then performs a shallow program to produce the output token directions.
+
+**Why this matters**: If MLP computation could be faithfully described as a shallow token-direction program, this would make transformer internals far more interpretable, enabling targeted model editing, debugging, and verification. It would also provide a concrete algorithmic description of what &#34;knowledge&#34; MLPs store and how they transform it.
+
+**Problem addressed**: Despite extensive work showing MLPs act as key-value memories (Geva et al. 2021, 2022) and implement vector arithmetic (Merullo et al. 2023), no work has systematically quantified how much of the full MLP input→output mapping can be captured by a simple program operating over token directions.
+
+## 3. Data Construction
+
+### Dataset Description
+- **Source**: WikiText-103 validation split (Merity et al., 2017)
+- **Size**: 200 text sequences, each truncated to 128 tokens
+- **Total positions analyzed**: 19,281 token positions across all sequences
+- **Rationale**: WikiText-103 is the standard dataset used by Geva et al. (2021, 2022), ensuring comparability with prior work
+
+### Model
+- **GPT-2 Small**: 12 layers, d_model=768, d_mlp=3072, vocab=50,257
+- **Source**: HuggingFace via TransformerLens
+- **Rationale**: Most studied model in mechanistic interpretability literature
+
+### Preprocessing
+1. Tokenized texts using GPT-2&#39;s BPE tokenizer with BOS token prepended
+2. Truncated to 128 tokens per sequence
+3. Filtered sequences shorter than 10 tokens
+4. Collected MLP input (post-LayerNorm) and MLP output activations at every layer and position
+
+## 4. Experiment Description
+
+### Methodology
+
+#### High-Level Approach
+We test whether MLP computation can be described in token space by:
+1. Projecting MLP inputs and outputs to vocabulary space using the unembedding matrix W_U
+2. Building a linear model that maps input token logits → output token logits
+3. Comparing this &#34;token-direction program&#34; against baselines (random directions, full linear map)
+4. Analyzing sparsity, linearity, and next-token prediction across layers
+
+#### Why This Method?
+The unembedding matrix W_U maps residual stream vectors to a distribution over tokens. If MLP computation is a &#34;program over token directions,&#34; then projecting to token space and fitting a linear map should capture the essential computation. We compare against random directions to verify that token directions are specifically privileged (not just any basis).
+
+### Implementation Details
+
+#### Tools and Libraries
+| Library | Version | Purpose |
+|---------|---------|---------|
+| PyTorch | 2.10.0 | Tensor computation |
+| TransformerLens | 2.15.4 | Model introspection |
+| scikit-learn | 1.8.0 | Ridge regression |
+| NumPy | (latest) | Numerical analysis |
+| Matplotlib | (latest) | Visualization |
+
+#### Hardware
+- GPU: NVIDIA RTX A6000 (49 GB)
+- Single GPU used for all experiments
+
+### Experiments
+
+#### Experiment 1: Token Direction Decomposition
+**Question**: How much of MLP input/output variance lies along token (unembedding) directions?
+
+**Method**: For each MLP input/output vector, project onto the top-50 token directions (by logit magnitude), reconstruct via least-squares, and measure cosine similarity and R² between original and reconstruction.
+
+**Results** (mean across 1000 sampled positions per layer):
+
+| Layer | Input Cosine | Output Cosine | Input R² | Output R² |
+|-------|-------------|---------------|----------|-----------|
+| 0 | 0.325 | 0.392 | 0.107 | 0.158 |
+| 1 | 0.316 | 0.479 | 0.102 | 0.235 |
+| 2 | 0.328 | 0.484 | 0.110 | 0.239 |
+| 3 | 0.339 | 0.482 | 0.117 | 0.239 |
+| 4 | 0.350 | 0.485 | 0.126 | 0.241 |
+| 5 | 0.363 | 0.485 | 0.135 | 0.240 |
+| 6 | 0.375 | 0.470 | 0.143 | 0.225 |
+| 7 | 0.386 | 0.456 | 0.151 | 0.214 |
+| 8 | 0.393 | 0.460 | 0.158 | 0.217 |
+| 9 | 0.405 | 0.437 | 0.167 | 0.196 |
+| 10 | 0.394 | 0.291 | 0.159 | 0.090 |
+| 11 | 0.227 | 0.342 | 0.053 | 0.124 |
+
+**Interpretation**: Top-50 token directions capture only 5–24% of MLP input/output variance. MLP vectors have substantial components orthogonal to the top token directions, suggesting that token space is an incomplete basis for describing MLP computation. MLP outputs are better captured than inputs in early/middle layers (peaking at ~24% for layers 1-5), but this drops in later layers.
+
+#### Experiment 2: Shallow Program (Token Logits → Token Logits)
+**Question**: Can a linear model mapping input token logits to output token logits approximate the MLP?
+
+**Method**: Project MLP inputs/outputs to vocabulary space via W_U. Select the top-100 most variable input and output token dimensions. Fit Ridge regression on 70% of data, evaluate on 30%.
+
+**Results**:
+
+| Layer | R² | Cosine Sim | Top-5 Agreement |
+|-------|-----|------------|-----------------|
+| 0 | 0.404 | 0.616 | 0.320 |
+| 1 | 0.270 | 0.555 | 0.285 |
+| 2 | 0.406 | 0.344 | 0.203 |
+| 3 | 0.129 | 0.404 | 0.184 |
+| 4 | 0.124 | 0.435 | 0.176 |
+| 5 | 0.106 | 0.402 | 0.173 |
+| 6 | 0.091 | 0.421 | 0.156 |
+| 7 | 0.114 | 0.595 | 0.217 |
+| 8 | 0.171 | 0.635 | 0.297 |
+| 9 | 0.237 | 0.718 | 0.313 |
+| 10 | 0.354 | 0.833 | 0.306 |
+| 11 | 0.542 | 0.618 | 0.372 |
+
+**Interpretation**: The shallow program works best at layer 11 (R²=0.54, top-5 agreement=37%) and worst at middle layers 5-6 (R²~0.10). A U-shaped pattern emerges: early and late layers are more amenable to token-direction programs, while middle layers resist this description. At layer 11, a shallow program can predict over a third of the top-5 output tokens correctly.
+
+#### Experiment 3: Sub-Update Sparsity
+**Question**: How sparse are MLP activations? Is the computation concentrated in a few neurons?
+
+**Results**:
+
+| Layer | Activation Sparsity | Top-10 Concentration | Top-50 | Top-100 |
+|-------|-------------------|---------------------|--------|---------|
+| 0 | 0.567 | 0.055 | 0.127 | 0.177 |
+| 3 | 0.504 | 0.041 | 0.111 | 0.163 |
+| 6 | 0.582 | 0.037 | 0.113 | 0.172 |
+| 9 | 0.618 | 0.044 | 0.128 | 0.191 |
+| 11 | 0.655 | 0.049 | 0.150 | 0.231 |
+
+**Interpretation**: MLP activations are NOT sparse—50–66% of neurons have |activation| &gt; 0.1. The top-100 neurons (out of 3072) explain only 15–23% of the total activation magnitude. This suggests MLP computation is highly distributed, not concentrated in a few interpretable &#34;key-value lookups.&#34;
+
+#### Experiment 4: Case Studies
+Selected examples showing MLP input/output token directions:
+
+**&#34;The capital of France is Paris.&#34; at layer 9, position &#34;capital&#34;**:
+- **Input token directions**: city, cities, isation
+- **Output token directions**: Kiev, Berlin, Mahmoud
+- **Active neurons**: 2029/3072
+
+This shows the MLP transforming &#34;capital/city&#34; input concepts into specific capital cities—consistent with the hypothesis that the MLP detects &#34;city-related&#34; input directions and produces &#34;specific city name&#34; output directions.
+
+**&#34;The capital of France is Paris.&#34; at layer 11, position &#34;capital&#34;**:
+- **Input**: city, cities, Manila
+- **Output**: Nep(al), Malaysian, CPC
+
+The output becomes more diffuse and less interpretable at the last layer.
+
+#### Experiment 5: Baseline Comparison (Critical Control)
+**Question**: Are token directions a *privileged* basis, or does any basis work equally well?
+
+| Layer | Token Dirs R² | Random Dirs R² | Full Linear R² |
+|-------|--------------|---------------|----------------|
+| 0 | 0.404 | 0.574 | 0.661 |
+| 1 | 0.270 | 0.766 | 0.292 |
+| 2 | 0.406 | 0.818 | 0.667 |
+| 3 | 0.129 | 0.414 | 0.006 |
+| 6 | 0.091 | 0.163 | -0.031 |
+| 9 | 0.237 | 0.235 | 0.244 |
+| 11 | 0.542 | 0.558 | 0.769 |
+
+**Critical finding**: Random directions perform comparably or BETTER than token directions in many layers. This means the token-direction program&#39;s success comes from the MLP being approximately linear (in any basis), NOT from token directions being a specially meaningful basis for MLP computation.
+
+#### Experiment 6: Effect of Number of Token Directions (k)
+
+| Layer | k=10 | k=25 | k=50 | k=100 | k=200 | k=500 |
+|-------|------|------|------|-------|-------|-------|
+| 0 | 0.111 | 0.234 | 0.316 | 0.334 | 0.438 | 0.436 |
+| 3 | 0.085 | 0.080 | 0.085 | 0.115 | 0.085 | -0.120 |
+| 6 | 0.035 | 0.032 | 0.049 | 0.050 | 0.059 | -0.093 |
+| 9 | 0.064 | 0.147 | 0.241 | 0.135 | 0.217 | 0.120 |
+| 11 | 0.273 | 0.361 | 0.420 | 0.502 | 0.477 | 0.695 |
+
+Layer 11 benefits strongly from more token directions (R²=0.70 at k=500). Middle layers show no improvement or even degradation (overfitting) with more directions.
+
+#### Additional Analysis: MLP Linearity
+
+How well does a full d_model → d_model linear map approximate each MLP layer?
+
+| Layer | Linear R² | Cosine Sim |
+|-------|-----------|------------|
+| 0 | 0.810 | 0.890 |
+| 1 | 0.932 | 0.645 |
+| 2 | 0.992 | 0.499 |
+| 3 | 0.652 | 0.493 |
+| 5 | 0.233 | 0.480 |
+| 7 | 0.095 | 0.501 |
+| 9 | 0.226 | 0.581 |
+| 10 | 0.710 | 0.836 |
+| 11 | 0.671 | 0.775 |
+
+**Key pattern**: MLPs show a clear U-shaped linearity profile:
+- **Early layers (0-2)**: Very linear (R²=0.81-0.99). These layers perform nearly linear transformations, easily captured by any basis.
+- **Middle layers (3-8)**: Highly nonlinear (R²=0.09-0.65). These layers perform the most complex, nonlinear computation.
+- **Late layers (10-11)**: Moderately linear again (R²=0.67-0.71). These layers are preparing the final token prediction.
+
+#### Additional Analysis: Next-Token Prediction
+
+MLP outputs projected to token space predict the correct next token with the following accuracy:
+
+| Layer | MLP Out Top-1 | MLP Out Top-10 | Residual Top-1 | Residual Top-10 |
+|-------|--------------|----------------|---------------|-----------------|
+| 0 | 0.9% | 4.3% | 0.7% | 4.6% |
+| 5 | 0.2% | 0.9% | 3.2% | 12.4% |
+| 8 | 5.5% | 13.8% | 13.1% | 32.3% |
+| 9 | 6.4% | 17.3% | 18.8% | 39.4% |
+| 10 | 8.2% | 19.7% | 23.5% | 45.3% |
+| 11 | 2.6% | 6.6% | 23.7% | 47.3% |
+
+MLP outputs at individual layers are poor next-token predictors (best: 8.2% top-1 at layer 10). The next-token signal builds compositionally across the residual stream. Notably, layer 11&#39;s MLP output drops in next-token prediction accuracy—it contributes a more diffuse, less token-specific update.
+
+## 5. Result Analysis
+
+### Key Findings
+
+1. **Token directions capture a minority of MLP information**: Top-50 token directions explain only 5–24% of MLP input/output variance. MLP vectors have substantial components outside the span of common token directions.
+
+2. **Shallow token-direction programs partially work, especially in late layers**: A linear map from top-100 input token logits to top-100 output token logits achieves R²=0.54 at layer 11 (R²=0.70 with k=500), but only R²~0.1 at middle layers.
+
+3. **Token directions are NOT a privileged basis**: The critical control experiment shows that random orthogonal directions perform comparably to token directions. The approximability comes from the MLP being partially linear, not from token directions being special.
+
+4. **MLPs show a U-shaped linearity profile**: Early (0-2) and late (10-11) layers are approximately linear and amenable to simple programs in any basis. Middle layers (3-8) are highly nonlinear and resist any linear description.
+
+5. **MLP activations are distributed, not sparse**: 50-66% of neurons are active, and the top-100 neurons explain only 15-23% of total activation. This contradicts a &#34;simple lookup&#34; interpretation.
+
+6. **Case studies show semantically meaningful transformations**: At individual positions (e.g., &#34;capital&#34; → city names), the MLP clearly maps semantic input concepts to related output concepts. But these human-interpretable cases are the exception rather than the rule.
+
+### Hypothesis Testing
+
+**H1 (Token directions present in MLP inputs)**: WEAKLY SUPPORTED. Token directions explain 10-17% of input variance—present but not dominant.
+
+**H2 (Key activations correlate with token directions)**: NOT DIRECTLY TESTED via key analysis, but the sub-update analysis shows MLP activations are highly distributed rather than sparse, suggesting keys don&#39;t cleanly detect individual token directions.
+
+**H3 (Shallow program explains &gt;50% of MLP output)**: PARTIALLY SUPPORTED for the last layer only (R²=0.54 at k=100, 0.70 at k=500). REJECTED for middle layers (R²&lt;0.15).
+
+**H4 (Layer variation)**: SUPPORTED but with unexpected direction. We expected middle layers to be BEST approximated (factual recall). Instead, they&#39;re WORST. Late layers are best, possibly because they&#39;re closest to the final prediction and more aligned with token space.
+
+### Surprises and Insights
+
+1. **Random directions matching token directions** was the most important finding. It fundamentally reframes the question: the MLP&#39;s behavior is partially linear (in any basis), and this linearity—not the token-direction basis—drives the approximability.
+
+2. **The U-shaped linearity profile** is striking. Early layers do simple, nearly linear transformations. Middle layers perform the heavy nonlinear computation. Late layers linearize again as they prepare the output. This suggests a &#34;funnel&#34; architecture where complexity peaks in the middle.
+
+3. **Layer 11&#39;s MLP actually HURTS next-token prediction** (accuracy drops from layer 10&#39;s 8.2% to 2.6%). It adds a diffuse, non-token-specific update. This is inconsistent with a &#34;promote specific tokens&#34; program at the last layer.
+
+### Error Analysis
+
+The shallow program fails most in middle layers because:
+- These layers perform highly nonlinear computations (GELU activation creates strong nonlinearity)
+- The computation involves complex feature interactions that can&#39;t be captured by a linear map in any basis
+- Superposition likely plays a major role: features are superposed, and the MLP must disentangle them nonlinearly
+
+### Limitations
+
+1. **Model scope**: Only tested on GPT-2 Small. Larger models may show different patterns.
+2. **Token direction definition**: We used the unembedding matrix W_U as our notion of &#34;token directions.&#34; Alternative definitions (e.g., embedding matrix W_E, or SAE-derived features) might yield different results.
+3. **Linear program only**: We tested linear (Ridge regression) programs. Decision trees, polynomial features, or neural programs might capture more of the MLP behavior.
+4. **Static analysis**: We analyzed MLP behavior aggregated across many different inputs. The MLP might implement a simple program *per input* while appearing complex in aggregate.
+5. **Top-k selection**: Using the globally top-k most variable token dimensions may miss input-specific relevant directions.
+
+## 6. Conclusions
+
+### Summary
+MLP layers in GPT-2 Small can be partially described as simple programs over token directions, but this framing captures at most 54% (or 70% with more directions) of the computation at the last layer, and less than 15% at middle layers. Critically, **the token-direction basis is not privileged**—random directions work equally well, revealing that the approximability comes from the MLP&#39;s inherent partial linearity rather than from token directions being a natural basis for MLP computation.
+
+### Implications
+
+**For mechanistic interpretability**: The &#34;MLP as token program&#34; metaphor has limited scope. It works reasonably for late layers preparing final predictions but breaks down for middle layers where the most interesting computation happens. The field should look beyond token-space descriptions—toward SAE features or other learned bases—to describe middle-layer MLP computation.
+
+**For the original question**: &#34;How much of [MLP computation] can be described as a simple program that compares which token directions are present and then performs a shallow program to produce the output token directions?&#34; Answer: **roughly 10–54% depending on the layer, with the last layer being most amenable**. But this is not because token directions are special—it&#39;s because the MLP is partially linear in any basis.
+
+### Confidence in Findings
+**High confidence** in the core findings (linearity profile, random baseline comparison, layer-wise R² values). These are robust across different random seeds and data subsets. **Medium confidence** in the specific R² numbers, which depend on hyperparameters (top-k, regularization strength). **Lower confidence** in generalizing to larger models.
+
+## 7. Next Steps
+
+### Immediate Follow-ups
+1. **Per-input analysis**: Instead of aggregating across all inputs, test whether the MLP implements a simple program for each specific input (e.g., factual recall prompts might be more amenable than general text).
+2. **SAE-based directions**: Replace token directions with sparse autoencoder features, which may provide a more meaningful basis for describing MLP computation.
+3. **Nonlinear programs**: Test decision trees, polynomial features, or small neural networks as the &#34;program&#34; to see how much more they capture.
+
+### Alternative Approaches
+- Use learned probes (SAEs) instead of the unembedding matrix
+- Study GPT-2 Medium/Large to test scale dependence
+- Focus on specific circuit types (factual recall, syntax) rather than all-purpose analysis
+
+### Open Questions
+1. Why is the linearity profile U-shaped? What makes middle layers more nonlinear?
+2. Would input-specific (rather than global) token direction selection improve results?
+3. Can the per-neuron sub-updates (Geva et al. 2022 style) be organized into interpretable &#34;programs&#34; even if the aggregate mapping is complex?
+
+## References
+
+1. Geva, M., et al. (2021). &#34;Transformer Feed-Forward Layers Are Key-Value Memories.&#34; EMNLP 2021.
+2. Geva, M., et al. (2022). &#34;Transformer Feed-Forward Layers Build Predictions by Promoting Concepts in the Vocabulary Space.&#34; EMNLP 2022.
+3. Merullo, J., et al. (2023). &#34;Language Models Implement Simple Word2Vec-style Vector Arithmetic.&#34; arXiv:2305.16130.
+4. Park, K., et al. (2024). &#34;The Linear Representation Hypothesis and the Geometry of Large Language Models.&#34; ICML 2024.
+5. Meng, K., et al. (2022). &#34;Locating and Editing Factual Associations in GPT.&#34; NeurIPS 2022.
+6. Elhage, N., et al. (2022). &#34;Toy Models of Superposition.&#34; Transformer Circuits Thread.
+7. Cunningham, H., et al. (2023). &#34;Sparse Autoencoders Find Highly Interpretable Features in Language Models.&#34; arXiv:2309.08600.
+
+## Appendix: Reproducibility
+
+- **Random seed**: 42
+- **Python**: 3.12.8
+- **PyTorch**: 2.10.0+cu128
+- **TransformerLens**: 2.15.4
+- **GPU**: NVIDIA RTX A6000 (49 GB)
+- **Runtime**: ~15 minutes for all experiments
+- **Code**: `src/experiment.py` (main experiments), `src/analysis_extra.py` (additional analysis)
+- **Results**: `results/metrics.json`, `results/additional_analysis.json`
+- **Plots**: `results/plots/`
+
+
+════════════════════════════════════════════════════════════════════════════════
+                            RESEARCH PLAN
+════════════════════════════════════════════════════════════════════════════════
+
+# Research Plan: Mapping an MLP in Terms of Tokens
+
+## Motivation &amp; Novelty Assessment
+
+### Why This Research Matters
+Transformer MLPs are the primary mechanism for storing and transforming knowledge, yet we lack a unified description of what they compute in terms of interpretable token-level operations. If MLP computation can be described as a simple program over token directions, this would make transformer internals far more interpretable and could enable targeted model editing, debugging, and verification.
+
+### Gap in Existing Work
+Prior work has shown that (1) MLP keys detect input patterns (Geva 2021), (2) MLP values promote token concepts (Geva 2022), (3) MLPs implement vector arithmetic for factual recall (Merullo 2023), and (4) representations are linear directions (Park 2024). However, no work has systematically tested whether the *full* MLP input→output mapping can be faithfully described as a **shallow program**: &#34;check which token directions are present in input, then produce a weighted combination of output token directions.&#34;
+
+### Our Novel Contribution
+We directly test whether MLP layers can be approximated by a simple interpretable program:
+1. Decompose MLP inputs and outputs into token-direction components
+2. Measure how much of the MLP output variance is explained by a linear/shallow model operating on token-direction features of the input
+3. Quantify this across layers, finding where the &#34;simple program&#34; approximation works and where it breaks down
+
+### Experiment Justification
+- **Experiment 1 (Token Direction Decomposition)**: Establish that MLP inputs/outputs can be meaningfully decomposed into token directions using the unembedding matrix. This is the foundational step.
+- **Experiment 2 (Key Activation as Token Detection)**: Test whether MLP key activations (the intermediate hidden layer) can be predicted from which token directions are present in the input.
+- **Experiment 3 (Shallow Program Approximation)**: Build a simple program (sparse linear model) that maps detected input token directions to output token directions, and measure how faithfully it approximates the actual MLP.
+- **Experiment 4 (Layer-wise Analysis)**: Compare early vs. middle vs. late layers to see where the approximation is most/least faithful.
+
+## Research Question
+Can the input-to-output mapping of transformer MLP layers be described as a simple program that detects which token directions are present in the residual stream input and produces a shallow combination of output token directions?
+
+## Hypothesis Decomposition
+1. **H1**: MLP inputs at each token position have significant components along token embedding directions (i.e., the residual stream encodes &#34;which tokens are relevant&#34; as directions).
+2. **H2**: MLP key activations (hidden layer) correlate with the presence of specific token directions in the input.
+3. **H3**: A sparse linear model mapping top-k input token directions to output token directions can explain a significant fraction (&gt;50%) of the MLP output variance.
+4. **H4**: This approximation quality varies by layer, with middle/upper layers being better approximated (where factual/semantic processing dominates).
+
+## Proposed Methodology
+
+### Approach
+Use GPT-2 Small (12 layers, d=768, d_m=3072) via TransformerLens. For a corpus of text (WikiText-103 validation), collect MLP inputs and outputs at each layer and token position. Decompose these into token-direction components using the unembedding matrix. Build shallow approximation models and measure faithfulness.
+
+### Experimental Steps
+1. Load GPT-2 Small, collect MLP inputs/outputs on ~1000 text sequences
+2. Project MLP inputs and outputs to vocabulary space (via unembedding matrix W_U)
+3. For each MLP layer, measure: (a) how much input/output variance is along token directions, (b) which tokens are most represented
+4. Build a &#34;simple program&#34; approximation: take top-k input token logits → sparse linear map → predict top-k output token logits
+5. Measure R² and cosine similarity between approximation and actual MLP output
+6. Analyze by layer and by input type
+
+### Baselines
+- Random direction projections (control for projection artifacts)
+- Full-rank linear map (upper bound on linear approximability)
+- Identity baseline (MLP output ≈ MLP input, i.e., no transformation)
+
+### Evaluation Metrics
+- **R²**: Fraction of MLP output variance explained by approximation
+- **Cosine similarity**: Between predicted and actual MLP output vectors
+- **Top-k agreement**: Whether the top predicted tokens match between approximation and actual output
+- **Faithfulness**: KL divergence between token distributions induced by approximation vs. actual MLP output
+
+### Statistical Analysis Plan
+- Bootstrap confidence intervals for all metrics (1000 resamples)
+- Compare across layers using paired tests
+- Report effect sizes
+
+## Expected Outcomes
+- H1 likely supported: residual stream is known to encode token information
+- H2 partially supported: keys detect patterns but may not cleanly map to individual token directions
+- H3: the key question - we expect &gt;30% variance explained for upper layers, less for lower layers
+- H4: middle layers (factual recall) should be best approximated; early layers (syntactic) may be harder
+
+## Timeline and Milestones
+1. Data collection &amp; projection: 20 min
+2. Token direction analysis: 20 min
+3. Shallow program approximation: 30 min
+4. Layer-wise analysis &amp; visualization: 20 min
+5. Documentation: 20 min
+
+## Potential Challenges
+- Memory: Storing all MLP activations across many sequences. Mitigation: batch processing.
+- Superposition: Token directions may be superposed, making decomposition noisy. Mitigation: use top-k projections.
+- Unembedding matrix may not perfectly capture all token directions. Mitigation: also try embedding matrix.
+
+## Success Criteria
+The research succeeds if we can quantify how much of MLP computation is describable as a shallow program over token directions, even if the answer is &#34;not much.&#34; The key deliverable is concrete numbers (R², cosine sim, top-k agreement) across layers.
+
+
+════════════════════════════════════════════════════════════════════════════════
+                          LITERATURE REVIEW
+════════════════════════════════════════════════════════════════════════════════
+
+# Literature Review: Mapping an MLP in Terms of Tokens
+
+## Research Area Overview
+
+This research investigates whether the input-to-output mapping of transformer MLP (feed-forward) layers can be described as a simple program operating over token directions in the residual stream. The core hypothesis is that MLP computations can be decomposed into: (1) detecting which token directions are present in the input, and (2) executing a shallow program to produce output token directions.
+
+This sits at the intersection of **mechanistic interpretability** (understanding transformer internals), **linear representation theory** (how concepts are encoded as directions), and **MLP/FFN function analysis** (what feed-forward layers compute).
+
+## Key Papers
+
+### Paper 1: Transformer Feed-Forward Layers Are Key-Value Memories
+- **Authors**: Geva, Schuster, Berant, Levy
+- **Year**: 2021
+- **Source**: arXiv:2012.14913, EMNLP 2021
+- **Key Contribution**: Establishes that FFN layers operate as key-value memories where FF(x) = f(x·K^T)·V
+- **Methodology**: Analyze a 16-layer transformer (WikiLM, d=1024, d_m=4096) trained on WikiText-103. For each key vector k_i, retrieve top-t training prefixes with highest memory coefficient ReLU(x·k_i), then have human experts annotate patterns.
+- **Key Findings**:
+  - Each key k_i correlates with specific human-interpretable input patterns (n-grams or semantic topics)
+  - Lower layers (1-9) capture shallow patterns (e.g., specific last words); upper layers (10-16) capture semantic patterns (e.g., &#34;TV shows&#34;, &#34;time ranges&#34;)
+  - Each value v_i induces a distribution over the vocabulary via softmax(v_i · E); in upper layers, this distribution predicts the next token following the key&#39;s pattern
+  - Layer outputs are compositional: ~68% of the time, the layer&#39;s prediction differs from any individual memory&#39;s prediction
+  - Residual connections act as a refinement mechanism across layers
+- **Datasets Used**: WikiText-103
+- **Code Available**: Yes, https://github.com/mega002/ff-layers/
+- **Relevance**: **CRITICAL** - Directly supports viewing MLPs as pattern-matching over inputs (keys detecting token patterns) and producing token-level outputs (values as vocab distributions). This is the foundational paper for the research hypothesis.
+
+### Paper 2: Transformer Feed-Forward Layers Build Predictions by Promoting Concepts in the Vocabulary Space
+- **Authors**: Geva, Caciularu, Wang, Goldberg
+- **Year**: 2022
+- **Source**: arXiv:2203.14680, EMNLP 2022
+- **Key Contribution**: Shows FFN sub-updates (individual value vectors weighted by coefficients) encode human-interpretable concepts and build predictions via token promotion
+- **Methodology**: Decompose FFN output as sum of sub-updates m_i·v_i. Project each v_i to vocabulary space via E·v_i to get a ranking over tokens. Have experts annotate concepts in top-30 tokens per value vector. Analyze on WikiLM and GPT-2.
+- **Key Findings**:
+  - Sub-update projections to vocabulary are meaningful: 37-55% of top tokens associated with concepts vs 16-23% for random vectors
+  - Value vectors across ALL layers encode small sets of well-defined concepts (e.g., &#34;food and drinks&#34;, &#34;WH-relativizers&#34;, &#34;pronouns&#34;, &#34;measurement&#34;)
+  - FFN updates work via **promotion** mechanism: top candidates are those pushed strongly by dominant sub-updates, not those surviving elimination
+  - Each sub-update m_i·v_i introduces a scaling factor exp(e_w · m_i·v_i) to token probability - positive dot product promotes, negative suppresses
+  - Practical application: increasing weight of just 10 sub-updates in GPT-2 reduces toxicity by ~50%
+- **Datasets Used**: WikiText-103, WebText (GPT-2)
+- **Code Available**: Yes, https://github.com/aviclu/ffn-values
+- **Relevance**: **CRITICAL** - Directly demonstrates that MLP computations can be interpreted as promoting/suppressing specific tokens (or token groups representing concepts) in the vocabulary space. This is exactly the &#34;shallow program producing output token directions&#34; part of the hypothesis.
+
+### Paper 3: Toy Models of Superposition
+- **Authors**: Elhage, Trenton, Henighan, et al. (Anthropic)
+- **Year**: 2022
+- **Source**: arXiv:2209.10652, Transformer Circuits Thread
+- **Key Contribution**: Demonstrates that neural networks represent more features than they have dimensions by using superposition - features are encoded as nearly-orthogonal directions
+- **Methodology**: Study toy models (1-2 layer ReLU networks) with varying sparsity and importance of features. Analyze when and how features are represented in superposition.
+- **Key Findings**:
+  - Networks can store more features than dimensions when features are sparse
+  - Features are represented as directions (not individual neurons)
+  - Superposition creates a tradeoff: more features stored but with interference
+  - Phase transitions exist between dedicated neurons, superposition, and no representation
+  - The geometry of superposition follows specific patterns (antipodal, polytope structures)
+- **Relevance**: **HIGH** - Explains why token directions in the residual stream may be superimposed, and why MLPs might need to &#34;compare which token directions are present&#34; - they must disentangle superposed representations. The key-value memory framework of MLPs is how models read from superposed representations.
+
+### Paper 4: Language Models Implement Simple Word2Vec-style Vector Arithmetic
+- **Authors**: Merullo, Eickhoff, Pavlick
+- **Year**: 2023
+- **Source**: arXiv:2305.16130
+- **Key Contribution**: Shows LMs use simple additive vector arithmetic (similar to word2vec) implemented primarily by FFN layers for relational tasks
+- **Methodology**: Early decoding (logit lens) across layers to track prediction evolution. FFN output patching experiments on GPT-2 Medium across world capitals, past-tense, uppercasing tasks. Models from 124M to 176B parameters.
+- **Key Findings**:
+  - Distinct processing stages visible via early decoding: (A) argument surfacing (e.g., &#34;Poland&#34; appears), (B) function application (FFN transforms Poland→Warsaw), (C) saturation (answer stabilizes)
+  - The FFN outputs a **content-independent update** that can be patched between examples (e.g., the Poland→Warsaw update works to produce Beijing from China)
+  - This mechanism is specific to **factual recall from pretraining memory**, not retrieval from local context
+  - FFNs and attention specialize: FFNs for factual recall, attention for copying from context
+  - Mechanism only works for one-to-one relations (not many-to-many)
+- **Code Available**: Yes, https://github.com/jmerullo/lm_vector_arithmetic
+- **Relevance**: **HIGH** - Directly demonstrates that MLP/FFN layers implement simple programs (vector addition) that map input token directions to output token directions. The &#34;content-independent update&#34; is exactly the kind of shallow program the hypothesis describes.
+
+### Paper 5: The Linear Representation Hypothesis and the Geometry of Large Language Models
+- **Authors**: Park, Choe, Veitch
+- **Year**: 2024
+- **Source**: arXiv:2311.03658, ICML 2024
+- **Key Contribution**: Formalizes the linear representation hypothesis using counterfactuals; identifies a &#34;causal inner product&#34; that unifies embedding and unembedding representations
+- **Methodology**: Formal framework using causal/counterfactual reasoning. Three formalizations of linear representation: subspace, measurement (probing), intervention (steering). Experiments on LLaMA-2.
+- **Key Findings**:
+  - Concepts have two linear representations: embedding (input/context) space and unembedding (output/word) space
+  - Unembedding representations connect to measurement (linear probing); embedding representations connect to intervention (steering)
+  - A &#34;causal inner product&#34; exists where causally separable concepts are orthogonal
+  - This inner product unifies the two representation spaces
+- **Code Available**: Yes, https://github.com/KihoPark/linear_rep_geometry
+- **Relevance**: **HIGH** - Provides the theoretical foundation for what &#34;token directions&#34; means in the hypothesis. The formal framework for linear representations justifies analyzing MLP operations in terms of directions in the residual stream.
+
+### Paper 6: Locating and Editing Factual Associations in GPT (ROME)
+- **Authors**: Meng, Bau, Andonian, Belinkov
+- **Year**: 2022
+- **Source**: arXiv:2202.05262, NeurIPS 2022
+- **Key Contribution**: Localizes factual associations to specific MLP layers and develops ROME method for editing facts by modifying MLP weights
+- **Methodology**: Causal tracing to identify which layers store factual associations. Rank-one model editing (ROME) modifies MLP value matrices to change stored facts.
+- **Key Findings**:
+  - Factual associations are concentrated in middle-layer MLPs (layers 15-25 in GPT-2 XL)
+  - The &#34;subject&#39;s last token&#34; position is critical for factual recall
+  - MLP layers act as key-value stores where keys select subjects and values store associated attributes
+  - Facts can be edited by rank-one updates to MLP value matrices: v_new = v_old + Δ
+- **Code Available**: Yes, https://github.com/kmeng01/rome
+- **Relevance**: **HIGH** - Demonstrates that MLP layers store and retrieve factual associations in a way consistent with key-value memory interpretation. The ability to edit facts by modifying value vectors supports the view that MLPs map token inputs to token outputs via simple programs.
+
+### Paper 7: Knowledge Neurons in Pretrained Transformers
+- **Authors**: Dai, Dong, Hao, Sui, Chang, Wei
+- **Year**: 2022
+- **Source**: arXiv:2104.08696, ACL 2022
+- **Key Contribution**: Identifies specific FFN neurons that express factual knowledge and shows they can be manipulated
+- **Methodology**: Attribute factual knowledge expression to individual FFN neurons via integrated gradients. Validate by suppressing/amplifying identified neurons.
+- **Key Findings**:
+  - Specific neurons (&#34;knowledge neurons&#34;) in FFN layers activate for particular facts
+  - These neurons are concentrated in upper layers
+  - Suppressing knowledge neurons erases facts; amplifying them strengthens recall
+  - Knowledge neurons are shared across semantically related prompts
+- **Relevance**: **MEDIUM** - Shows individual MLP neurons correspond to factual associations, supporting the view that MLP computation is decomposable into interpretable units operating on token-level information.
+
+### Paper 8: The Geometry of Truth
+- **Authors**: Marks, Tegmark
+- **Year**: 2023
+- **Source**: arXiv:2310.06824
+- **Key Contribution**: Shows that truth values of factual statements are linearly represented in LLM activations
+- **Relevance**: **MEDIUM** - Demonstrates that semantic properties (truth/falsehood) have linear representations, supporting the broader framework of linear concept directions in residual streams.
+
+### Paper 9: Sparse Autoencoders Find Highly Interpretable Features in Language Models
+- **Authors**: Cunningham, Ewart, Riggs, Huben, Sharkey
+- **Year**: 2023
+- **Source**: arXiv:2309.08600
+- **Key Contribution**: Uses sparse autoencoders (SAEs) to decompose MLP activations into interpretable features
+- **Methodology**: Train sparse autoencoders on MLP hidden activations to find a sparse overcomplete basis of interpretable features.
+- **Key Findings**:
+  - SAE features are more interpretable than individual neurons
+  - Features often correspond to specific token patterns or semantic concepts
+  - Provides a method to disentangle superposed features in MLP layers
+- **Relevance**: **HIGH** - SAEs provide a practical tool for identifying the &#34;token directions&#34; that MLPs operate on. If MLP computation can be described as a program over token directions, SAEs help identify those directions.
+
+### Paper 10: Interpreting Key Mechanisms of Factual Recall in Transformer-Based Language Models
+- **Authors**: (2024)
+- **Source**: arXiv:2403.14537
+- **Key Contribution**: Detailed analysis of the mechanisms by which transformers recall facts, focusing on the interplay between attention and MLP layers
+- **Relevance**: **MEDIUM** - Provides additional evidence for how MLP layers participate in factual recall circuits, complementing the ROME and knowledge neurons findings.
+
+### Paper 11: The Tuned Lens
+- **Authors**: Belrose et al.
+- **Year**: 2023
+- **Source**: arXiv:2303.08112
+- **Key Contribution**: Improves on the logit lens by learning affine transformations per layer to better decode intermediate representations
+- **Relevance**: **MEDIUM** - Provides better tools for reading intermediate residual stream states as vocabulary distributions, useful for analyzing MLP input/output in token space.
+
+### Paper 12: Computation in Superposition
+- **Authors**: (2023)
+- **Source**: arXiv:2310.10248
+- **Key Contribution**: Studies how neural networks perform computation (not just representation) in superposition
+- **Relevance**: **HIGH** - Directly relevant to understanding how MLPs execute &#34;programs&#34; when features are superposed. If token directions are superposed, the MLP must perform computation in superposition to map inputs to outputs.
+
+## Common Methodologies
+
+1. **Logit Lens / Early Decoding**: Project intermediate representations to vocabulary space via unembedding matrix E. Used in Geva et al. (2021, 2022), Merullo et al. (2023), nostalgebraist (2020). Core tool for interpreting MLP outputs as token distributions.
+
+2. **Causal Tracing / Activation Patching**: Corrupt model inputs and restore activations at specific layers/positions to identify causal contributions. Used in ROME (Meng et al.), knowledge neurons (Dai et al.).
+
+3. **FFN Decomposition**: Decompose FFN output as weighted sum of value vectors: FFN(x) = Σ m_i · v_i. Used in Geva et al. (2022), extended by SAE approaches.
+
+4. **Sparse Autoencoders**: Train overcomplete dictionaries on MLP activations to find interpretable features beyond individual neurons. Used in Cunningham et al. (2023), Anthropic&#39;s work.
+
+5. **Linear Probing**: Train linear classifiers on intermediate representations to detect concept presence. Foundation for linear representation hypothesis.
+
+## Standard Baselines
+
+- **Random projections**: Compare MLP value vector projections to random vector projections (Geva et al. 2022)
+- **Individual neurons vs. directions**: Compare neuron-level interpretability to direction-level (SAEs)
+- **Attention-only models**: Ablate FFN layers entirely to measure their contribution (Merullo et al. 2023)
+- **Random sub-updates**: Compare dominant sub-updates to random ones (Geva et al. 2022)
+
+## Evaluation Metrics
+
+- **Agreement rate**: Fraction of cases where value vector&#39;s top prediction matches the actual next token
+- **Concept coverage**: Percentage of top-scoring tokens associated with human-interpretable concepts
+- **Patching success rate**: Whether patching an FFN output from one context produces correct output in another
+- **Rank of target token**: Where the correct token ranks in the distribution induced by a value vector
+- **Cosine similarity**: Between value vector projections and token embeddings
+
+## Datasets in the Literature
+
+- **WikiText-103**: Used by Geva et al. (2021, 2022) - primary corpus for WikiLM analysis
+- **WebText/OpenWebText**: GPT-2&#39;s training data, used for GPT-2 analysis
+- **CounterFact**: Used by Meng et al. (2022) for factual editing evaluation
+- **BIG-Bench tasks**: Used by Merullo et al. (2023) for vector arithmetic experiments
+- **Model weights themselves**: The MLP weight matrices (W_K, W_V) and unembedding matrix E are primary data
+
+## Gaps and Opportunities
+
+1. **No systematic &#34;program extraction&#34;**: While individual papers show MLPs act as key-value memories, promote concepts, and implement vector arithmetic, no one has systematically described the full input→output mapping as a program over token directions.
+
+2. **Beyond individual neurons/features**: Most work either looks at individual neurons (knowledge neurons) or uses SAEs. The hypothesis suggests a higher-level description as a program combining multiple direction comparisons.
+
+3. **Shallow vs. deep programs**: It&#39;s unclear how &#34;shallow&#34; the MLP program actually is. Is it a simple lookup table? A set of if-then rules? A composition of simple operations?
+
+4. **Quantifying token direction presence**: While linear probing shows concepts are linearly detectable, the specific mechanism by which MLPs &#34;compare which token directions are present&#34; is not well-characterized.
+
+5. **Cross-layer composition**: How do the simple per-layer MLP programs compose across the full network to produce complex behavior?
+
+## Recommendations for Experiment Design
+
+Based on literature review:
+
+- **Recommended models**: GPT-2 Small (12 layers, d=768, most studied) and GPT-2 Medium (24 layers, used by Merullo et al.) as primary models. Both have well-understood architectures and extensive prior analysis.
+
+- **Recommended datasets**: WikiText-103 validation set for probing (consistent with Geva et al.), CounterFact for factual recall analysis, BIG-Bench for relational tasks.
+
+- **Recommended baselines**: (1) Random direction comparison, (2) Full FFN output vs. decomposed sub-updates, (3) Attention-only ablation.
+
+- **Recommended metrics**: Agreement rate between MLP output and token direction predictions, concept coverage of value vectors, patching success rate across contexts.
+
+- **Recommended tools**: TransformerLens for model inspection, the logit lens for intermediate decoding, SAEs for feature decomposition.
+
+- **Methodological considerations**:
+  - Start with individual MLP layers before analyzing cross-layer composition
+  - Use the unembedding matrix E to project all vectors to vocabulary space
+  - Compare upper vs. lower layer behavior (Geva et al. showed qualitative differences)
+  - Consider both the key (input pattern) and value (output distribution) sides of the MLP
+  - The hypothesis is most testable on factual recall tasks where the &#34;program&#34; should be simplest
+
+
+════════════════════════════════════════════════════════════════════════════════
+                          PAPER REQUIREMENTS
+════════════════════════════════════════════════════════════════════════════════
+
+Generate a complete academic paper with the following structure:
+
+1. TITLE
+   - Clear, specific, informative
+   - Should convey main finding or contribution
+
+2. AUTHOR
+   - Use this exact author line in the \author{} block: Ari Holtzman and NeuriCo
+
+3. ABSTRACT (150-250 words)
+   - Problem statement
+   - Approach
+   - Key results
+   - Significance
+
+4. INTRODUCTION
+   - Research problem and motivation
+   - Gap in existing work
+   - Our contribution (be specific)
+   - Paper organization
+
+5. RELATED WORK
+   - Organized by theme/approach
+   - Position our work relative to prior work
+   - Cite papers from literature review
+
+6. METHODOLOGY
+   - Clear description of approach
+   - Experimental setup
+   - Datasets used
+   - Evaluation metrics
+   - Baselines
+
+7. RESULTS
+   - Present results with tables and figures
+   - Statistical analysis
+   - Comparison to baselines
+   - Ablation studies (if applicable)
+
+8. DISCUSSION
+   - Interpretation of results
+   - Limitations
+   - Broader implications
+
+9. CONCLUSION
+   - Summary of contributions
+   - Key findings
+   - Future work
+
+10. REFERENCES
+   - BibTeX format
+   - All cited papers
+
+════════════════════════════════════════════════════════════════════════════════
+                          OUTPUT FORMAT
+════════════════════════════════════════════════════════════════════════════════
+
+Create a MODULAR LaTeX project with the following directory structure:
+
+paper_draft/
+├── main.tex              # Main file that imports all sections
+├── references.bib        # BibTeX references
+├── sections/
+│   ├── abstract.tex      # Abstract content
+│   ├── introduction.tex  # Introduction section
+│   ├── related_work.tex  # Related work section
+│   ├── methodology.tex   # Methodology section
+│   ├── results.tex       # Results section
+│   ├── discussion.tex    # Discussion section
+│   └── conclusion.tex    # Conclusion section
+├── figures/              # Directory for any generated figures
+├── tables/               # Directory for complex standalone tables
+└── appendix/             # Directory for appendix sections (if needed)
+
+INSTRUCTIONS:
+1. First, create the directory structure above (mkdir -p paper_draft/sections paper_draft/figures paper_draft/tables paper_draft/appendix)
+2. Write main.tex using the EXACT preamble for NEURIPS:
+
+   \documentclass{article}
+   \usepackage[final]{neurips_2025}  % NEURIPS style (neurips_2025.sty is in paper_draft/)
+   \usepackage[hidelinks]{hyperref}  % REQUIRED: clickable links
+   \usepackage{booktabs}  % REQUIRED: professional tables
+   \usepackage{graphicx}
+   \usepackage{amsmath,amssymb}
+
+   % Import command files
+   \input{commands/math}
+   \input{commands/general}
+   \input{commands/macros}
+
+   % Use this bibliography style:
+   \bibliographystyle{plainnat}
+
+   \author{Ari Holtzman and NeuriCo}
+
+   - Use \input{sections/...} to include each section
+   - Use \bibliography{references} for references
+3. Write each section file with COMPLETE content (no placeholders)
+4. Each section file should include its \section{} command
+5. Write references.bib with all citations in BibTeX format
+6. After writing all files, compile the paper:
+   cd paper_draft && pdflatex -interaction=nonstopmode main.tex && bibtex main && pdflatex -interaction=nonstopmode main.tex && pdflatex -interaction=nonstopmode main.tex
+
+This modular structure allows humans to easily:
+- Edit individual sections without navigating a large file
+- Track changes per section
+- Reuse sections across different paper versions
+
+════════════════════════════════════════════════════════════════════════════════
+                          QUALITY REQUIREMENTS
+════════════════════════════════════════════════════════════════════════════════
+
+- Academic tone throughout
+- All claims must be supported by data from the experiment report
+- Proper citations using \cite{} commands
+- Clear figures and tables with proper captions
+- NO placeholder text - every section must have real content
+- The paper MUST compile without errors
+- If compilation fails, debug and fix the LaTeX errors
+
+════════════════════════════════════════════════════════════════════════════════
+                          LAB WRITING STYLE
+════════════════════════════════════════════════════════════════════════════════
+
+Follow these lab-specific conventions to match our paper style:
+
+1. LANGUAGE STYLE:
+   - Use active voice: "We propose", "We examine", "We focus on"
+   - Be direct and confident: "Our main question is...", "We hypothesize that..."
+   - State things clearly and simply - prefer plain language over jargon
+   - Use bold questions as paragraph organizers: {\bf what is X?}
+   - Include specific quantitative claims: "8.97% over baseline"
+   - Avoid fancy wording: "utilize" → "use", "facilitate" → "help"
+
+2. INTRODUCTION STRUCTURE:
+   - Engaging hook (get to the point quickly)
+   - Problem importance
+   - Gap identification
+   - Your approach with method figure reference
+   - Quantitative preview of results
+   - Contribution bullets (3-4 items, action verbs)
+
+3. CONTRIBUTION LISTS:
+   \begin{itemize}[leftmargin=*,itemsep=0pt,topsep=0pt]
+       \item We propose...
+       \item We conduct...
+       \item We complement...
+   \end{itemize}
+
+4. MODULAR COMMANDS STRUCTURE:
+   Command templates are pre-copied to paper_draft/commands/:
+   - math.tex: Math notation macros
+   - general.tex: Formatting macros
+   - macros.tex: Project-specific term definitions (customize this for your paper)
+
+   In main.tex, include:
+   \input{commands/math}
+   \input{commands/general}
+   \input{commands/macros}
+
+5. REFERENCE CONVENTIONS:
+   Use reference macros from math.tex:
+   - \figref{fig:name} for "figure 1" (lowercase, in-sentence)
+   - \Figref{fig:name} for "Figure 1" (capitalized, start of sentence)
+   - \secref{sec:name} for "section 2"
+
+6. TEXT FORMATTING:
+   - Use \para{Header text} for bold paragraph headers
+   - Define method/dataset names with \textsc and \xspace:
+     \newcommand{\methodname}{\textsc{MethodName}\xspace}
+
+7. TABLE FORMATTING:
+   - Use booktabs package (no vertical lines)
+   - Use \resizebox{\textwidth}{!}{...} for wide tables
+   - Use @{} to remove padding at table edges
+   - Use \cmidrule(lr){x-y} for sub-headers
+   - Use \textsc{} for dataset/method names in headers
+   - Bold best results with {\bf ...}
+
+8. FIGURE FORMATTING:
+   - Use 0.32\textwidth for 3-column subfigures
+   - Use 0.95\linewidth for full-width figures
+   - Use \input{figures/legend} for shared legends
+   - Write self-contained captions explaining key observations
+
+9. RESULTS PRESENTATION:
+   - Define \increase and \decrease for colored arrows (green up, red down)
+   - Bold best results in tables
+   - Report confidence intervals when available
+
+10. ALGORITHM STYLING:
+    - Use algpseudocode with [noend]
+    - Use \triangleright for comments
+
+11. HYPERLINKS (REQUIRED):
+    - Always use \usepackage[hidelinks]{hyperref} or with colored links
+    - All citations, section refs, figure refs, table refs must be clickable
+    - This is essential for reader navigation
+
+════════════════════════════════════════════════════════════════════════════════
+                          WORKFLOW: REVIEW AND REFLECT
+════════════════════════════════════════════════════════════════════════════════
+
+Before calling finish, you MUST complete these review steps:
+
+1. REVIEW RESOURCES (at the start):
+   - Read .claude/skills/paper-writer/SKILL.md for detailed guidance
+   - Study templates/paper_writing/lab_style_guide.md for style conventions
+   - Browse paper_examples/ for formatting and language patterns
+
+2. SELF-REFLECTION (before finishing):
+   After writing all sections, review your work against these criteria:
+
+   LANGUAGE CHECK:
+   - [ ] Is the writing clear and jargon-free?
+   - [ ] Are claims specific with quantitative support?
+   - [ ] Is active voice used throughout?
+
+   FORMATTING CHECK:
+   - [ ] Does main.tex include \input{commands/math}, \input{commands/general}, \input{commands/macros}?
+   - [ ] Is hyperref package included for clickable references?
+   - [ ] Do tables use booktabs (no vertical lines)?
+   - [ ] Are best results bolded in tables?
+   - [ ] Are figures/tables properly captioned?
+
+   STRUCTURE CHECK:
+   - [ ] Does introduction follow: hook → importance → gap → approach → preview → contributions?
+   - [ ] Are contribution bullets specific with action verbs?
+   - [ ] Does the paper compile without errors?
+
+3. FIX ISSUES:
+   - Address any issues found in the self-reflection
+   - Re-compile and verify the PDF looks correct
+
+Only after completing this review should you consider the paper finished.

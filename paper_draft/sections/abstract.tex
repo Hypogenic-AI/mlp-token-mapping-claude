@@ -1,0 +1,7 @@
+Transformer MLP layers store and transform knowledge, yet we lack a unified description of what they compute in terms of interpretable, token-level operations.
+We test whether MLP layers can be described as ``simple programs'' that detect which token directions are present in the residual stream input and produce output token directions.
+Using \gpttwo ($\dmodel=768$, 12 layers), we project MLP inputs and outputs into vocabulary space via the unembedding matrix and fit sparse linear models mapping input token logits to output token logits.
+We find that a linear token-direction program explains 9--54\% of MLP output variance depending on the layer, with the best fit at layer~11 ($\Rsq=0.54$ with $k=100$ directions, $\Rsq=0.70$ with $k=500$).
+However, a critical control experiment reveals that random orthogonal directions perform comparably to token directions across most layers, indicating that the approximability stems from the MLP's inherent partial linearity rather than token directions being a privileged basis.
+MLP layers exhibit a striking U-shaped linearity profile: early (layers 0--2) and late (layers 10--11) layers are approximately linear and amenable to simple programs in any basis, while middle layers (3--8) are highly nonlinear and resist any linear description.
+These findings reframe the ``MLP as token program'' metaphor: the partial success of token-direction programs reflects linear structure in the MLP, not a special role of the vocabulary basis.
